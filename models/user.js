@@ -11,7 +11,7 @@ export default (sequelize, DataTypes) => {
       unique: true,
       validate: { isEmail: true },
     },
-    passwordHash: {
+    password: {
       type: DataTypes.STRING(255),
       allowNull: false,
     },

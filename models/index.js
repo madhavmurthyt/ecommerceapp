@@ -23,9 +23,9 @@ import UserModel from './user.js';
 import CategoryModel from './category.js';
 import ProductModel from './product.js';
 import CartModel from './cart.js';
-import CartItemModel from './cartItem.js';
+import CartItemModel from './cartitem.js';
 import OrderModel from './order.js';
-import OrderItemModel from './orderItem.js';
+import OrderItemModel from './orderitem.js';
 import PaymentModel from './payment.js';
 
 const User = UserModel(sequelize, DataTypes);
