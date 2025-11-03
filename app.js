@@ -4,7 +4,7 @@ import cors from 'cors';
 import initDB from './initdb.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { User } from './models/index.js';
+import { User, Category, Product } from './models/index.js';
 dotenv.config();
 
 const app = express();
@@ -64,20 +64,87 @@ app.get('/login', async (req,res) => {
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
     res.status(200).json({ message: 'Login successful', userId: user.id, token });
 });
+
 // List all Products by category
+app.get('/products/:categoryId', async (req, res) => {
+    const { categoryId } = req.params;
+    // Fetch products logic here
+    if(!categoryId) {
+        return res.status(400).json({ message: 'Category is required' });
+    }
+    const products = await Product.findAll({ where: { categoryId } });
+    res.status(200).json({ products });
+});
 
 
 // add products to cart
-// remove products from cart
-// users to checkout and pay for products
+app.post('/cart/add', async (req, res) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if(!token) {
+        return res.status(401).json({ message: 'Unauthorized' });
+    }
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const { userId } = decoded;
+        const { productId, quantity } = req.body;
+        if(!productId || !quantity) {
+            return res.status(400).json({ message: 'Product ID and quantity are required' });
+        }
+        const product = await Product.findOne({ where: { id: productId } });
+        if(!product) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+        if(product.stock < quantity) {
+            return res.status(400).json({ message: 'Insufficient stock' });
+        }
+        // Add to cart logic here
+        await CartItem.create({
+            userId,
+            productId,
+            quantity
+        });
+        res.status(200).json({ message: 'Product added to cart successfully' });    
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
 
+// remove products from cart
+app.post('/cart/remove', async (req, res) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if(!token) {
+        return res.status(401).json({ message: 'Unauthorized' });
+    }
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const { userId } = decoded;
+        const { productId } = req.body;
+        if(!productId) {
+            return res.status(400).json({ message: 'Product ID is required' });
+        }
+        // Remove from cart logic here
+        await CartItem.destroy({
+            where: {
+                userId,
+                productId
+            }
+        });
+        res.status(200).json({ message: 'Product removed from cart successfully' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// users to checkout and pay for products
 
 // add inventory for each product
 
 
 
 app.listen(PORT, async () => {
-  await initDB();
+  //await initDB();
   console.log(`Server is running on http://localhost:${PORT}`);
 });
 
