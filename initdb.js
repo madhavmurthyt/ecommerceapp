@@ -1,3 +1,4 @@
+import { hash } from 'bcryptjs';
 import { sequelize, Category, Product, User } from './models/index.js';
 
 async function initDB() {
@@ -5,9 +6,10 @@ async function initDB() {
     // Drop and recreate all tables
     await sequelize.sync({ force: true });
 
+
     const defaultUsers = [
-      { firstName: 'Madhav', lastName: 'Thotapalli', email: 'madhav@gmail.com', password: 'password123' },
-      { firstName: 'Test', lastName: 'test', email: 'test@gmail.com', password: 'password123' }
+      { firstName: 'Madhav', lastName: 'Thotapalli', email: 'madhav@gmail.com', password: await hash('password123', 10) },
+      { firstName: 'Test', lastName: 'test', email: 'test@gmail.com', password: await hash('password123', 10) }
     ];
     await User.bulkCreate(defaultUsers);
 

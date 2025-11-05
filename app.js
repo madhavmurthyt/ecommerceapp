@@ -4,7 +4,7 @@ import cors from 'cors';
 import initDB from './initdb.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { User, Category, Product } from './models/index.js';
+import { User, Category, Product,Cart, CartItem } from './models/index.js';
 dotenv.config();
 
 const app = express();
@@ -87,6 +87,7 @@ app.post('/cart/add', async (req, res) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const { userId } = decoded;
         const { productId, quantity } = req.body;
+        const parseQuantity = parseInt(quantity, 10);
         if(!productId || !quantity) {
             return res.status(400).json({ message: 'Product ID and quantity are required' });
         }
@@ -94,16 +95,35 @@ app.post('/cart/add', async (req, res) => {
         if(!product) {
             return res.status(404).json({ message: 'Product not found' });
         }
-        if(product.stock < quantity) {
+        if(product.stock < parseQuantity) {
             return res.status(400).json({ message: 'Insufficient stock' });
         }
         // Add to cart logic here
-        await CartItem.create({
-            userId,
-            productId,
-            quantity
+        // if user already has a cart use that else create new cart
+        let cart = await Cart.findOne({ where: { userId } });
+        if(!cart) { 
+            cart = await Cart.create({ userId });
+        }
+
+        // if cart already has the same product update the quantity
+        let existingCartItem = await CartItem.findOne({ where: { cartId: cart.id, productId } });
+        if(existingCartItem) {
+            existingCartItem.quantity = existingCartItem.quantity + parseQuantity;
+            await existingCartItem.save();
+        } else {
+            existingCartItem = await CartItem.create({
+                cartId: cart.id,
+                productId,
+                quantity: parseQuantity
         });
-        res.status(200).json({ message: 'Product added to cart successfully' });    
+        }
+        if(!existingCartItem) {
+            return res.status(500).json({ message: 'Error adding to cart' });
+        } else {
+            await product.decrement('stockQuantity', { by: quantity });
+        }
+        res.status(200).json({ message: 'Product added to cart successfully' });  
+    
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Internal server error' });
@@ -124,16 +144,26 @@ app.post('/cart/remove', async (req, res) => {
             return res.status(400).json({ message: 'Product ID is required' });
         }
         // Remove from cart logic here
+        const userCart = await Cart.findOne({ where: { userId } });
+        if(!userCart) {
+            return res.status(404).json({ message: 'Cart not found' });
+        }
         await CartItem.destroy({
             where: {
                 userId,
                 productId
             }
         });
+
+        await Cart.destroy({
+            where: {
+                userId
+            }
+        });
         res.status(200).json({ message: 'Product removed from cart successfully' });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Internal server error' });
+        res.status(500).json({ message: 'Error deleting cart item' });
     }
 });
 
@@ -144,7 +174,7 @@ app.post('/cart/remove', async (req, res) => {
 
 
 app.listen(PORT, async () => {
-  //await initDB();
+  await initDB();
   console.log(`Server is running on http://localhost:${PORT}`);
 });
 
