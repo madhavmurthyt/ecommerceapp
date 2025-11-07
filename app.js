@@ -4,7 +4,9 @@ import cors from 'cors';
 import initDB from './initdb.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { User, Category, Product,Cart, CartItem } from './models/index.js';
+import { User, Order, OrderItem, Payment,Product,Cart, CartItem } from './models/index.js';
+import stripeClient from './strip.js';
+import { or } from 'sequelize';
 dotenv.config();
 
 const app = express();
@@ -167,14 +169,79 @@ app.post('/cart/remove', async (req, res) => {
     }
 });
 
+
 // users to checkout and pay for products
 
-// add inventory for each product
+app.post('/cart/checkout', async (req, res) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if(!token) {
+        return res.status(401).json({ message: 'Unauthorized' });
+    }
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const { userId } = decoded;
 
+        // Fetch user's cart
+        const userCart = await Cart.findOne({ where: { userId }, include: [{model: CartItem, include: [Product] }] });
+
+        // add inventory for each product
+       if(!userCart || userCart.CartItems.length === 0) {
+            return res.status(400).json({ message: 'Cart is empty' });
+       }
+
+       let totalAmount = 0;
+       const orderItems = [];
+       userCart.CartItems.forEach(item => {
+            totalAmount += parseFloat(item.Product.price) * item.quantity;
+            orderItems.push({
+                productId: item.productId,
+                quantity: item.quantity,
+                priceAtPurchase: item.Product.price
+            });
+       });
+
+       const order = await Order.create({
+            userId,
+            totalAmount,
+            status: 'pending'
+       });
+
+      await OrderItem.bulkCreate(orderItems.map(oi => ({
+            ...oi,
+            orderId: order.id
+       })));
+
+    // checkout to stripe
+    const paymentIntent = await stripeClient.paymentIntents.create({
+        amount: Math.round(totalAmount * 100), // amount in cents
+        currency: 'usd',
+        metadata: { orderId: order.id.toString() },
+    });
+    //status is in Payment model is enum
+    await Payment.create({
+        orderId: order.id,
+        stripePaymentIntentId: paymentIntent.id,
+        amount: totalAmount,
+        status: 'pending'
+    });
+
+    await CartItem.destroy({ where: { cartId: userCart.id } });
+    await Cart.destroy({ where: { id: userCart.id } });
+
+    res.status(200).json({ 
+        clientSecret: paymentIntent.client_secret,
+        orderId: order.id
+    });
+
+} catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+}
+});
 
 
 app.listen(PORT, async () => {
-  await initDB();
+  //await initDB();
   console.log(`Server is running on http://localhost:${PORT}`);
 });
 
