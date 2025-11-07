@@ -148,18 +148,18 @@ app.post('/cart/remove', async (req, res) => {
         if(!userCart) {
             return res.status(404).json({ message: 'Cart not found' });
         }
+
         await CartItem.destroy({
             where: {
-                userId,
+                cartId: userCart.id,
                 productId
             }
         });
 
-        await Cart.destroy({
-            where: {
-                userId
-            }
-        });
+        const itemCount = await CartItem.count({ where: { cartId: userCart.id } });
+        if(itemCount === 0) {
+            await Cart.destroy({ where: { id: userCart.id } });
+        }
         res.status(200).json({ message: 'Product removed from cart successfully' });
     } catch (error) {
         console.error(error);
